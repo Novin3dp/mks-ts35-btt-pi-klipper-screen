@@ -46,9 +46,13 @@ done
 printf '%s\n' "$BACKUP_DIR" | sudo tee "$INSTALL_DIR/last_backup" >/dev/null
 
 log "Compiling Device Tree Overlay"
-dtc -@ -I dts -O dtb -o "$INSTALL_DIR/overlay/ts35_cb1.dtbo" "$INSTALL_DIR/overlay/ts35_cb1.dts"
+# /opt is root-owned; compile to a temporary user-writable path, then install with sudo.
+TMP_DTBO="$(mktemp --suffix=.dtbo)"
+trap 'rm -f "$TMP_DTBO"' EXIT
+dtc -@ -I dts -O dtb -o "$TMP_DTBO" "$INSTALL_DIR/overlay/ts35_cb1.dts"
 sudo mkdir -p /boot/overlay-user
-sudo cp "$INSTALL_DIR/overlay/ts35_cb1.dtbo" /boot/overlay-user/ts35_cb1.dtbo
+sudo cp "$TMP_DTBO" /boot/overlay-user/ts35_cb1.dtbo
+sudo cp "$TMP_DTBO" "$INSTALL_DIR/overlay/ts35_cb1.dtbo"
 
 log "Enabling TS35 overlay"
 [[ -f /boot/armbianEnv.txt ]] || fail "/boot/armbianEnv.txt not found. This installer targets Armbian/CB1."
