@@ -8,6 +8,14 @@ USER_HOME="$(getent passwd "$USER_NAME" | cut -d: -f6)"
 FLAG_FILE="$USER_HOME/beeper_enabled"
 BACKUP_DIR="$USER_HOME/novin3dp-ts35-backups/$(date +%Y%m%d-%H%M%S)"
 
+# Override with NOVIN3DP_PIP_INDEX_URL when the target network needs a specific mirror.
+DEFAULT_PIP_INDEX="https://pypi.org/simple"
+FALLBACK_PIP_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
+PIP_INDEX_URL="${NOVIN3DP_PIP_INDEX_URL:-$DEFAULT_PIP_INDEX}"
+export PIP_DEFAULT_TIMEOUT="${PIP_DEFAULT_TIMEOUT:-60}"
+export PIP_RETRIES="${PIP_RETRIES:-10}"
+export PIP_DISABLE_PIP_VERSION_CHECK="1"
+
 log() { printf '\n[Novin3dp TS35] %s\n' "$*"; }
 fail() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -67,6 +75,27 @@ fi
 log "Installing Xorg framebuffer configuration"
 sudo mkdir -p /etc/X11/xorg.conf.d
 sudo cp "$PROJECT_DIR/xorg/99-ts35-fbdev.conf" /etc/X11/xorg.conf.d/99-ts35-fbdev.conf
+
+log "Checking Python package index"
+check_pip_index() {
+    local index="$1"
+    local probe="${index%/}/jinja2/"
+    curl -4 -fsSL --connect-timeout 10 --max-time 30 "$probe" -o /dev/null
+}
+
+if [[ -n "${NOVIN3DP_PIP_INDEX_URL:-}" ]]; then
+    log "Using user-specified Python package index: $PIP_INDEX_URL"
+    check_pip_index "$PIP_INDEX_URL" || fail "The configured Python package index is not reachable: $PIP_INDEX_URL"
+elif check_pip_index "$DEFAULT_PIP_INDEX"; then
+    PIP_INDEX_URL="$DEFAULT_PIP_INDEX"
+    log "Using PyPI: $PIP_INDEX_URL"
+elif check_pip_index "$FALLBACK_PIP_INDEX"; then
+    PIP_INDEX_URL="$FALLBACK_PIP_INDEX"
+    log "PyPI is not reachable; using fallback mirror: $PIP_INDEX_URL"
+else
+    fail "No supported Python package index is reachable. PyPI and the fallback mirror could not be contacted. You can retry with NOVIN3DP_PIP_INDEX_URL=<mirror-url>."
+fi
+export PIP_INDEX_URL
 
 log "Installing KlipperScreen"
 if [[ -d "$USER_HOME/KlipperScreen/.git" ]]; then
@@ -131,6 +160,9 @@ Installation completed.
 
 Backup:
   $BACKUP_DIR
+
+Python package index:
+  $PIP_INDEX_URL
 
 A reboot is required to activate the Device Tree overlay:
   sudo reboot
