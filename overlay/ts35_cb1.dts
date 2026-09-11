@@ -1,0 +1,42 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "bigtreetech,cb1", "allwinner,sun50i-h616";
+
+    fragment@0 {
+        target = <&i2c_gpio>;
+        __overlay__ {
+            status = "disabled";
+        };
+    };
+
+    fragment@1 {
+        target = <&spi1>;
+        __overlay__ {
+            status = "okay";
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            xpt2046@2 {
+                compatible = "linux,spidev";
+                reg = <2>;
+                spi-max-frequency = <2000000>;
+                interrupt-parent = <&pio>;
+                interrupts = <2 10 2>;
+                pendown-gpio = <&pio 2 10 0>;
+                status = "okay";
+            };
+        };
+    };
+
+    fragment@2 {
+        target = <&tft35>;
+        __overlay__ {
+            status = "okay";
+            spi-max-frequency = <48000000>;
+            reset-gpios = <&pio 2 12 1>;
+            dc-gpios = <&pio 2 14 0>;
+        };
+    };
+};
