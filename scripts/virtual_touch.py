@@ -13,6 +13,28 @@ FLAG_FILE = os.environ.get("TS35_BEEPER_FLAG", "/home/biqu/beeper_enabled")
 FLAG_CHECK_INTERVAL = 1.0
 PRESS_TH = 60
 
+# --- Touch axis calibration -------------------------------------------------
+# The raw X/Y channel assignment and direction can differ slightly between
+# physical MKS TS35 units even with identical wiring, because it depends on
+# how the resistive touch layer itself is oriented internally. If touch is
+# rotated or mirrored on your unit, do NOT edit the mapping logic below;
+# just flip these three booleans and restart the service. See README.md
+# "Touch calibration" for the 4-corner test procedure to determine the
+# correct combination for your unit.
+SWAP_XY = False   # swap the two raw ADC channels before anything else
+INVERT_X = True   # mirror the final X axis (0 <-> 4095)
+INVERT_Y = False  # mirror the final Y axis (0 <-> 4095)
+
+
+def map_axes(x_raw, y_raw):
+    if SWAP_XY:
+        x_raw, y_raw = y_raw, x_raw
+    if INVERT_X:
+        x_raw = 4095 - x_raw
+    if INVERT_Y:
+        y_raw = 4095 - y_raw
+    return x_raw, y_raw
+
 
 def export_gpio(number):
     path = f"/sys/class/gpio/gpio{number}"
@@ -124,9 +146,10 @@ try:
             if z1 > PRESS_TH:
                 x_raw = read(0x90)
                 y_raw = read(0xD0)
+                out_x, out_y = map_axes(x_raw, y_raw)
                 ui.write(e.EV_KEY, e.BTN_TOUCH, 1)
-                ui.write(e.EV_ABS, e.ABS_X, y_raw)
-                ui.write(e.EV_ABS, e.ABS_Y, x_raw)
+                ui.write(e.EV_ABS, e.ABS_X, out_x)
+                ui.write(e.EV_ABS, e.ABS_Y, out_y)
                 ui.write(e.EV_ABS, e.ABS_PRESSURE, 500)
                 ui.syn()
                 touched = True
@@ -136,8 +159,9 @@ try:
             y_raw = read(0xD0)
             z1 = read(0xB0)
             if z1 > PRESS_TH and x_raw < 4090:
-                ui.write(e.EV_ABS, e.ABS_X, y_raw)
-                ui.write(e.EV_ABS, e.ABS_Y, x_raw)
+                out_x, out_y = map_axes(x_raw, y_raw)
+                ui.write(e.EV_ABS, e.ABS_X, out_x)
+                ui.write(e.EV_ABS, e.ABS_Y, out_y)
                 ui.write(e.EV_ABS, e.ABS_PRESSURE, 500)
                 ui.syn()
             else:
