@@ -1,0 +1,15 @@
+[Unit]
+Description=Novin3dp TS35 beeper enable/disable watcher
+After=moonraker.service
+Wants=moonraker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/novin3dp-ts35/scripts/beeper_watcher.py
+Restart=always
+RestartSec=2
+User=__TS35_USER__
+Environment=TS35_BEEPER_FLAG=__TS35_BEEPER_FLAG__
+
+[Install]
+WantedBy=multi-user.target
