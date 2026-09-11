@@ -106,7 +106,7 @@ KlipperScreen Touch Beep
 - Touch sampling هنگام لمس: حدود **30 Hz**
 - Touch IRQ: GPIO74 / PC10
 - Beeper: GPIO70 / PC6
-- Touch coordinate: swap X/Y در Python
+- Touch coordinate: قابل‌تنظیم با سه پرچم `SWAP_XY`/`INVERT_X`/`INVERT_Y` در `scripts/virtual_touch.py` (مقدار پیش‌فرض repo: `SWAP_XY=False`, `INVERT_X=True`, `INVERT_Y=False` — روی واحد فیزیکی دیگر ممکن است فرق کند، به بخش «لمس در جای اشتباه ثبت می‌شود» در عیب‌یابی مراجعه کن)
 - framebuffer: `/dev/fb0`
 - Touch device: `/dev/spidev0.2`
 
@@ -169,6 +169,38 @@ ls -l /dev/spidev0.2
 sudo systemctl status virtual-touch.service --no-pager
 sudo journalctl -u virtual-touch.service -n 100 --no-pager
 ```
+
+### لمس در جای اشتباه ثبت می‌شود (جابه‌جا/معکوس/چرخیده)
+
+جهت واقعی کانال‌های خام X/Y پنل مقاومتی می‌تواند بین واحدهای فیزیکی مختلف MKS TS35 (حتی با سیم‌کشی کاملاً یکسان) کمی فرق کند — چون به جهت‌گیری داخلی خود لایه‌ی مقاومتی تاچ بستگی دارد، نه فقط به سیم‌کشی. اگر بعد از نصب، لمس در جای درستی ثبت نمی‌شود، این را انجام بده:
+
+**۱. مقادیر خام هر چهار گوشه را ببین:**
+```bash
+cat /proc/bus/input/devices | grep -A5 -i "ADS7846"   # شماره‌ی eventX را پیدا کن
+sudo evtest /dev/input/eventX
+```
+
+به‌ترتیب گوشه‌های بالا-چپ، بالا-راست، پایین-چپ، پایین-راست را لمس کن و مقادیر `ABS_X`/`ABS_Y` را یادداشت کن.
+
+**۲. با توجه به الگو، سه پرچم بالای `scripts/virtual_touch.py` (یا `/opt/novin3dp-ts35/scripts/virtual_touch.py` روی سیستم نصب‌شده) را تنظیم کن:**
+
+```python
+SWAP_XY = False   # اگر حرکت افقی انگشت باعث تغییر ABS_Y می‌شود (نه ABS_X)، این را True کن
+INVERT_X = True   # اگر لمس چپ/راست برعکس ثبت می‌شود، این را toggle کن
+INVERT_Y = False  # اگر لمس بالا/پایین برعکس ثبت می‌شود، این را toggle کن
+```
+
+| علامت | راه‌حل |
+|---|---|
+| فقط چپ/راست برعکس است | `INVERT_X` را toggle کن |
+| فقط بالا/پایین برعکس است | `INVERT_Y` را toggle کن |
+| حرکت افقی روی محور عمودی اثر می‌گذارد (و برعکس) | `SWAP_XY = True` کن، بعد دوباره طبق جدول بالا `INVERT_X`/`INVERT_Y` را تنظیم کن |
+
+**۳. بعد از هر تغییر:**
+```bash
+sudo systemctl restart virtual-touch.service
+```
+و دوباره چهار گوشه را تست کن.
 
 ### تاچ درست است ولی تصویر نویز دارد
 
