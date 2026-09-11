@@ -15,6 +15,7 @@ sudo systemctl daemon-reload
 
 sudo rm -f /etc/X11/xorg.conf.d/99-ts35-fbdev.conf
 sudo rm -f /boot/overlay-user/ts35_cb1.dtbo
+sudo rm -f /etc/modules-load.d/ts35-spidev.conf
 
 if [[ -f /boot/armbianEnv.txt ]]; then
     sudo sed -i -E 's/(^user_overlays=.*)([[:space:]]+)ts35_cb1([[:space:]]*|$)/\1\3/' /boot/armbianEnv.txt
