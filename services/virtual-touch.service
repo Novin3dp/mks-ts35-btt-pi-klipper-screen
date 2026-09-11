@@ -1,6 +1,6 @@
 [Unit]
 Description=Novin3dp MKS TS35 virtual XPT2046 touchscreen
-After=multi-user.target
+After=multi-user.target systemd-modules-load.service
 Wants=systemd-modules-load.service
 
 [Service]
