@@ -36,6 +36,15 @@ sudo apt-get install -y device-tree-compiler python3-evdev python3-spidev \
     xserver-xorg xserver-xorg-core xserver-xorg-video-fbdev xinit \
     x11-xserver-utils xinput git curl
 
+log "Ensuring spidev kernel module is loaded"
+# On some fresh Armbian images the spidev module is not auto-loaded at boot,
+# which silently prevents /dev/spidev0.2 from ever appearing (touch never
+# starts, even though the overlay and service are otherwise correct).
+sudo modprobe spidev || true
+if [[ ! -f /etc/modules-load.d/ts35-spidev.conf ]]; then
+    echo "spidev" | sudo tee /etc/modules-load.d/ts35-spidev.conf >/dev/null
+fi
+
 log "Preparing project files"
 sudo mkdir -p "$INSTALL_DIR/scripts" "$INSTALL_DIR/overlay"
 sudo cp "$PROJECT_DIR/scripts/virtual_touch.py" "$INSTALL_DIR/scripts/"
@@ -71,6 +80,21 @@ if grep -q '^user_overlays=' /boot/armbianEnv.txt; then
 else
     echo 'user_overlays=ts35_cb1' | sudo tee -a /boot/armbianEnv.txt >/dev/null
 fi
+
+log "Removing legacy touchscreen calibration files (if any)"
+# Older manual setups (before this project switched to the spidev-based
+# virtual touch driver) sometimes added an evdev "Calibration"/"SwapAxes"
+# InputClass matching the same "ADS7846 Touchscreen" device name that
+# virtual_touch.py creates. If such a file is still present, X11 applies
+# that old transform ON TOP of the already-correct swap done in Python,
+# which shows up as inverted/scrambled touch coordinates.
+for f in /usr/share/X11/xorg.conf.d/99-touch-evdev.conf /etc/X11/xorg.conf.d/99-touch-evdev.conf; do
+    if [[ -f "$f" ]] && grep -q "ADS7846" "$f" 2>/dev/null; then
+        sudo cp -a "$f" "$BACKUP_DIR/$(basename "$f").bak"
+        sudo rm -f "$f"
+        log "Removed legacy calibration file: $f"
+    fi
+done
 
 log "Installing Xorg framebuffer configuration"
 sudo mkdir -p /etc/X11/xorg.conf.d
