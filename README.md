@@ -23,14 +23,13 @@
 cd ~
 git clone https://github.com/Novin3dp/mks-ts35-btt-pi-klipper-screen.git
 cd mks-ts35-btt-pi-klipper-screen
-chmod +x install.sh
-./install.sh
+bash install.sh
 ```
 
-یا نصب مستقیم:
+یا به‌صورت یک خط:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Novin3dp/mks-ts35-btt-pi-klipper-screen/main/install.sh | bash
+tmp=$(mktemp -d) && git clone --depth 1 https://github.com/Novin3dp/mks-ts35-btt-pi-klipper-screen.git "$tmp/ts35" && bash "$tmp/ts35/install.sh"; rc=$?; rm -rf "$tmp"; exit $rc
 ```
 
 اسکریپت نصب وابستگی‌ها، Device Tree Overlay، Xorg، KlipperScreen، درایور مجازی تاچ، سرویس‌های systemd و قابلیت Touch Beep را نصب و تنظیم می‌کند و قبل از تغییر فایل‌های موجود backup می‌سازد.
@@ -139,8 +138,7 @@ journalctl -u virtual-touch.service -f
 
 ```bash
 cd ~/mks-ts35-btt-pi-klipper-screen
-chmod +x uninstall.sh
-./uninstall.sh
+bash uninstall.sh
 ```
 
 این اسکریپت **Klipper و KlipperScreen را حذف نمی‌کند**.
