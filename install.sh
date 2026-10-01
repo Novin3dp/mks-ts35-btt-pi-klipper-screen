@@ -9,8 +9,6 @@ FLAG_FILE="$USER_HOME/beeper_enabled"
 BACKUP_DIR="$USER_HOME/novin3dp-ts35-backups/$(date +%Y%m%d-%H%M%S)"
 
 # Python package mirrors can be overridden for a specific network.
-# Tsinghua is tried first because some CB1/Armbian networks have
-# intermittent or very slow access to pypi.org.
 DEFAULT_PIP_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
 FALLBACK_PIP_INDEX="https://pypi.org/simple"
 SECOND_FALLBACK_PIP_INDEX="https://mirrors.aliyun.com/pypi/simple/"
@@ -18,6 +16,10 @@ PIP_INDEX_URL="${NOVIN3DP_PIP_INDEX_URL:-$DEFAULT_PIP_INDEX}"
 export PIP_DEFAULT_TIMEOUT="${PIP_DEFAULT_TIMEOUT:-30}"
 export PIP_RETRIES="${PIP_RETRIES:-3}"
 export PIP_DISABLE_PIP_VERSION_CHECK="1"
+
+# python-mpv is fetched directly from its upstream GitHub release archive.
+# This avoids the PyPI python-mpv endpoint that can time out on some CB1 networks.
+PYTHON_MPV_URL="https://github.com/jaseg/python-mpv/archive/refs/tags/v1.0.8.tar.gz"
 
 log() { printf '\n[Novin3dp TS35] %s\n' "$*"; }
 fail() { echo "ERROR: $*" >&2; exit 1; }
@@ -124,6 +126,29 @@ else
     git clone https://github.com/KlipperScreen/KlipperScreen.git "$USER_HOME/KlipperScreen"
 fi
 sudo chown -R "$USER_NAME:$USER_NAME" "$USER_HOME/KlipperScreen"
+
+# Replace only the python-mpv requirement for Python >= 3.9 with the official
+# upstream GitHub release archive. Other KlipperScreen dependencies continue
+# to use the selected PyPI mirror.
+KS_REQ="$USER_HOME/KlipperScreen/scripts/KlipperScreen-requirements.txt"
+if [[ -f "$KS_REQ" ]]; then
+    TMP_REQ="$(mktemp)"
+    awk -v url="$PYTHON_MPV_URL" '
+        BEGIN { replaced=0 }
+        /^python-mpv==/ {
+            if (!replaced) {
+                print "python-mpv @ " url ";python_version>=\"3.9\""
+                replaced=1
+            }
+            next
+        }
+        { print }
+    ' "$KS_REQ" > "$TMP_REQ"
+    sudo cp "$TMP_REQ" "$KS_REQ"
+    rm -f "$TMP_REQ"
+    sudo chown "$USER_NAME:$USER_NAME" "$KS_REQ"
+fi
+
 pushd "$USER_HOME/KlipperScreen" >/dev/null
 BACKEND="X" SERVICE="Y" NETWORK="N" START="1" ./scripts/KlipperScreen-install.sh
 popd >/dev/null
@@ -183,6 +208,9 @@ Backup:
 
 Python package index:
   $PIP_INDEX_URL
+
+python-mpv source:
+  $PYTHON_MPV_URL
 
 A reboot is required to activate the Device Tree overlay:
   sudo reboot
