@@ -17,9 +17,9 @@ export PIP_DEFAULT_TIMEOUT="${PIP_DEFAULT_TIMEOUT:-30}"
 export PIP_RETRIES="${PIP_RETRIES:-3}"
 export PIP_DISABLE_PIP_VERSION_CHECK="1"
 
-# python-mpv >= 1.0.8 is fetched directly from its upstream GitHub release
-# archive. This avoids the PyPI python-mpv endpoint timing out on some CB1
-# networks. Python 3.8 keeps the older compatible release from the index.
+# python-mpv is installed separately from the official upstream GitHub
+# release after KlipperScreen creates its virtual environment. Keeping it
+# out of KlipperScreen-requirements.txt avoids pip trying PyPI first.
 PYTHON_MPV_URL="https://github.com/jaseg/python-mpv/archive/refs/tags/v1.0.8.tar.gz"
 
 log() { printf '\n[Novin3dp TS35] %s\n' "$*"; }
@@ -128,31 +128,47 @@ else
 fi
 sudo chown -R "$USER_NAME:$USER_NAME" "$USER_HOME/KlipperScreen"
 
-# Replace the upstream python-mpv requirements with the official GitHub
-# release archive for Python >= 3.9. This prevents pip from contacting the
-# PyPI python-mpv endpoint. Python 3.8 retains python-mpv 0.5.2.
+# Remove python-mpv from the requirements file. KlipperScreen's installer
+# will install all remaining dependencies normally, then we install the
+# pinned upstream python-mpv release into the same virtual environment.
 KS_REQ="$USER_HOME/KlipperScreen/scripts/KlipperScreen-requirements.txt"
 if [[ -f "$KS_REQ" ]]; then
     TMP_REQ="$(mktemp)"
-    awk -v url="$PYTHON_MPV_URL" '
-        BEGIN { replaced=0 }
-        /^python-mpv==/ {
-            if (!replaced) {
-                print "python-mpv @ " url ";python_version>=\"3.9\""
-                print "python-mpv==0.5.2;python_version<\"3.9\""
-                replaced=1
-            }
-            next
-        }
-        { print }
-    ' "$KS_REQ" > "$TMP_REQ"
+    grep -v '^python-mpv==' "$KS_REQ" > "$TMP_REQ"
     sudo cp "$TMP_REQ" "$KS_REQ"
     rm -f "$TMP_REQ"
     sudo chown "$USER_NAME:$USER_NAME" "$KS_REQ"
 fi
 
 pushd "$USER_HOME/KlipperScreen" >/dev/null
-BACKEND="X" SERVICE="Y" NETWORK="N" START="1" ./scripts/KlipperScreen-install.sh
+BACKEND="X" SERVICE="Y" NETWORK="N" START="0" ./scripts/KlipperScreen-install.sh
+popd >/dev/null
+
+log "Installing python-mpv 1.0.8 from upstream GitHub"
+KSENV="$USER_HOME/.KlipperScreen-env"
+[[ -x "$KSENV/bin/pip" ]] || fail "KlipperScreen virtual environment was not created: $KSENV"
+
+sudo -u "$USER_NAME" env PIP_INDEX_URL="$PIP_INDEX_URL" PIP_DEFAULT_TIMEOUT="$PIP_DEFAULT_TIMEOUT" \
+    "$KSENV/bin/python" -m pip install --disable-pip-version-check --no-cache-dir \
+    "$PYTHON_MPV_URL" || fail "Unable to install python-mpv 1.0.8 from GitHub. Check GitHub connectivity."
+
+log "Installing KlipperScreen service"
+# The KlipperScreen installer was run with START=0 above so we can install
+# python-mpv first. Now install/enable the service without reinstalling the venv.
+pushd "$USER_HOME/KlipperScreen" >/dev/null
+if [[ -f scripts/KlipperScreen.service ]]; then
+    SERVICE_FILE="$(mktemp)"
+    sed -e "s#KS_USER#$USER_NAME#g" \
+        -e "s#KS_ENV#$KSENV#g" \
+        -e "s#KS_DIR#$USER_HOME/KlipperScreen#g" \
+        -e "s#KS_BACKEND#X#g" \
+        scripts/KlipperScreen.service > "$SERVICE_FILE"
+    sudo cp "$SERVICE_FILE" /etc/systemd/system/KlipperScreen.service
+    rm -f "$SERVICE_FILE"
+    sudo systemctl daemon-reload
+    sudo systemctl unmask KlipperScreen.service
+    sudo systemctl enable KlipperScreen.service
+fi
 popd >/dev/null
 
 log "Installing virtual-touch service"
@@ -200,6 +216,7 @@ sudo systemctl restart beeper-watcher.service
 if [[ -e /dev/spidev0.2 ]]; then
     sudo systemctl restart virtual-touch.service
 fi
+sudo systemctl restart KlipperScreen.service
 
 cat <<EOF
 
@@ -211,7 +228,7 @@ Backup:
 Python package index:
   $PIP_INDEX_URL
 
-python-mpv source (Python >= 3.9):
+python-mpv source:
   $PYTHON_MPV_URL
 
 A reboot is required to activate the Device Tree overlay:
