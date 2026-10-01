@@ -8,12 +8,15 @@ USER_HOME="$(getent passwd "$USER_NAME" | cut -d: -f6)"
 FLAG_FILE="$USER_HOME/beeper_enabled"
 BACKUP_DIR="$USER_HOME/novin3dp-ts35-backups/$(date +%Y%m%d-%H%M%S)"
 
-# Override with NOVIN3DP_PIP_INDEX_URL when the target network needs a specific mirror.
-DEFAULT_PIP_INDEX="https://pypi.org/simple"
-FALLBACK_PIP_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
+# Python package mirrors can be overridden for a specific network.
+# Tsinghua is tried first because some CB1/Armbian networks have
+# intermittent or very slow access to pypi.org.
+DEFAULT_PIP_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
+FALLBACK_PIP_INDEX="https://pypi.org/simple"
+SECOND_FALLBACK_PIP_INDEX="https://mirrors.aliyun.com/pypi/simple/"
 PIP_INDEX_URL="${NOVIN3DP_PIP_INDEX_URL:-$DEFAULT_PIP_INDEX}"
-export PIP_DEFAULT_TIMEOUT="${PIP_DEFAULT_TIMEOUT:-60}"
-export PIP_RETRIES="${PIP_RETRIES:-10}"
+export PIP_DEFAULT_TIMEOUT="${PIP_DEFAULT_TIMEOUT:-30}"
+export PIP_RETRIES="${PIP_RETRIES:-3}"
 export PIP_DISABLE_PIP_VERSION_CHECK="1"
 
 log() { printf '\n[Novin3dp TS35] %s\n' "$*"; }
@@ -37,9 +40,6 @@ sudo apt-get install -y device-tree-compiler python3-evdev python3-spidev \
     x11-xserver-utils xinput git curl
 
 log "Ensuring spidev kernel module is loaded"
-# On some fresh Armbian images the spidev module is not auto-loaded at boot,
-# which silently prevents /dev/spidev0.2 from ever appearing (touch never
-# starts, even though the overlay and service are otherwise correct).
 sudo modprobe spidev || true
 if [[ ! -f /etc/modules-load.d/ts35-spidev.conf ]]; then
     echo "spidev" | sudo tee /etc/modules-load.d/ts35-spidev.conf >/dev/null
@@ -63,7 +63,6 @@ done
 printf '%s\n' "$BACKUP_DIR" | sudo tee "$INSTALL_DIR/last_backup" >/dev/null
 
 log "Compiling Device Tree Overlay"
-# /opt is root-owned; compile to a temporary user-writable path, then install with sudo.
 TMP_DTBO="$(mktemp --suffix=.dtbo)"
 trap 'rm -f "$TMP_DTBO"' EXIT
 dtc -@ -I dts -O dtb -o "$TMP_DTBO" "$INSTALL_DIR/overlay/ts35_cb1.dts"
@@ -82,12 +81,6 @@ else
 fi
 
 log "Removing legacy touchscreen calibration files (if any)"
-# Older manual setups (before this project switched to the spidev-based
-# virtual touch driver) sometimes added an evdev "Calibration"/"SwapAxes"
-# InputClass matching the same "ADS7846 Touchscreen" device name that
-# virtual_touch.py creates. If such a file is still present, X11 applies
-# that old transform ON TOP of the already-correct swap done in Python,
-# which shows up as inverted/scrambled touch coordinates.
 for f in /usr/share/X11/xorg.conf.d/99-touch-evdev.conf /etc/X11/xorg.conf.d/99-touch-evdev.conf; do
     if [[ -f "$f" ]] && grep -q "ADS7846" "$f" 2>/dev/null; then
         sudo cp -a "$f" "$BACKUP_DIR/$(basename "$f").bak"
@@ -104,7 +97,7 @@ log "Checking Python package index"
 check_pip_index() {
     local index="$1"
     local probe="${index%/}/jinja2/"
-    curl -4 -fsSL --connect-timeout 10 --max-time 30 "$probe" -o /dev/null
+    curl -4 -fsSL --connect-timeout 10 --max-time 20 "$probe" -o /dev/null
 }
 
 if [[ -n "${NOVIN3DP_PIP_INDEX_URL:-}" ]]; then
@@ -112,12 +105,15 @@ if [[ -n "${NOVIN3DP_PIP_INDEX_URL:-}" ]]; then
     check_pip_index "$PIP_INDEX_URL" || fail "The configured Python package index is not reachable: $PIP_INDEX_URL"
 elif check_pip_index "$DEFAULT_PIP_INDEX"; then
     PIP_INDEX_URL="$DEFAULT_PIP_INDEX"
-    log "Using PyPI: $PIP_INDEX_URL"
+    log "Using Python package mirror: $PIP_INDEX_URL"
 elif check_pip_index "$FALLBACK_PIP_INDEX"; then
     PIP_INDEX_URL="$FALLBACK_PIP_INDEX"
-    log "PyPI is not reachable; using fallback mirror: $PIP_INDEX_URL"
+    log "Primary mirror is not reachable; using PyPI: $PIP_INDEX_URL"
+elif check_pip_index "$SECOND_FALLBACK_PIP_INDEX"; then
+    PIP_INDEX_URL="$SECOND_FALLBACK_PIP_INDEX"
+    log "Primary mirror and PyPI are not reachable; using fallback mirror: $PIP_INDEX_URL"
 else
-    fail "No supported Python package index is reachable. PyPI and the fallback mirror could not be contacted. You can retry with NOVIN3DP_PIP_INDEX_URL=<mirror-url>."
+    fail "No supported Python package index is reachable. You can retry with NOVIN3DP_PIP_INDEX_URL=<mirror-url>."
 fi
 export PIP_INDEX_URL
 
