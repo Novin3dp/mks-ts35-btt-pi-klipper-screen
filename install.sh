@@ -17,9 +17,10 @@ export PIP_DEFAULT_TIMEOUT="${PIP_DEFAULT_TIMEOUT:-30}"
 export PIP_RETRIES="${PIP_RETRIES:-3}"
 export PIP_DISABLE_PIP_VERSION_CHECK="1"
 
-# python-mpv is installed separately from the official upstream GitHub
-# release after KlipperScreen creates its virtual environment. Keeping it
-# out of KlipperScreen-requirements.txt avoids pip trying PyPI first.
+# Install python-mpv separately from the upstream GitHub release. It must
+# never remain in KlipperScreen-requirements.txt because current KlipperScreen
+# uses conditional requirements and older installer runs may have rewritten
+# that file with a direct URL.
 PYTHON_MPV_URL="https://github.com/jaseg/python-mpv/archive/refs/tags/v1.0.8.tar.gz"
 
 log() { printf '\n[Novin3dp TS35] %s\n' "$*"; }
@@ -122,20 +123,21 @@ export PIP_INDEX_URL
 
 log "Installing KlipperScreen"
 if [[ -d "$USER_HOME/KlipperScreen/.git" ]]; then
-    git -C "$USER_HOME/KlipperScreen" pull --ff-only
+    git -C "$USER_HOME/KlipperScreen" fetch --depth=1 origin master
+    git -C "$USER_HOME/KlipperScreen" reset --hard origin/master
+    git -C "$USER_HOME/KlipperScreen" clean -fd
 else
-    git clone https://github.com/KlipperScreen/KlipperScreen.git "$USER_HOME/KlipperScreen"
+    git clone --depth=1 https://github.com/KlipperScreen/KlipperScreen.git "$USER_HOME/KlipperScreen"
 fi
 sudo chown -R "$USER_NAME:$USER_NAME" "$USER_HOME/KlipperScreen"
 
-# Remove every python-mpv requirement line, including modern PEP 508 lines
-# such as python-mpv==1.0.8;python_version>="3.10". A previous version of
-# this installer only matched "python-mpv==" and therefore missed the
-# conditional requirement used by current KlipperScreen.
+# Remove EVERY python-mpv line, regardless of whether it is a normal pin,
+# PEP 508 conditional, direct GitHub URL, or an old installer modification.
+# This is deliberately broader than matching "python-mpv==".
 KS_REQ="$USER_HOME/KlipperScreen/scripts/KlipperScreen-requirements.txt"
 if [[ -f "$KS_REQ" ]]; then
     TMP_REQ="$(mktemp)"
-    grep -vE '^python-mpv([<=>!~]|;|$)' "$KS_REQ" > "$TMP_REQ"
+    grep -vE '^python-mpv' "$KS_REQ" > "$TMP_REQ" || true
     sudo cp "$TMP_REQ" "$KS_REQ"
     rm -f "$TMP_REQ"
     sudo chown "$USER_NAME:$USER_NAME" "$KS_REQ"
