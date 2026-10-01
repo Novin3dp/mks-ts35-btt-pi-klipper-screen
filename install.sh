@@ -17,8 +17,9 @@ export PIP_DEFAULT_TIMEOUT="${PIP_DEFAULT_TIMEOUT:-30}"
 export PIP_RETRIES="${PIP_RETRIES:-3}"
 export PIP_DISABLE_PIP_VERSION_CHECK="1"
 
-# python-mpv is fetched directly from its upstream GitHub release archive.
-# This avoids the PyPI python-mpv endpoint that can time out on some CB1 networks.
+# python-mpv >= 1.0.8 is fetched directly from its upstream GitHub release
+# archive. This avoids the PyPI python-mpv endpoint timing out on some CB1
+# networks. Python 3.8 keeps the older compatible release from the index.
 PYTHON_MPV_URL="https://github.com/jaseg/python-mpv/archive/refs/tags/v1.0.8.tar.gz"
 
 log() { printf '\n[Novin3dp TS35] %s\n' "$*"; }
@@ -127,9 +128,9 @@ else
 fi
 sudo chown -R "$USER_NAME:$USER_NAME" "$USER_HOME/KlipperScreen"
 
-# Replace only the python-mpv requirement for Python >= 3.9 with the official
-# upstream GitHub release archive. Other KlipperScreen dependencies continue
-# to use the selected PyPI mirror.
+# Replace the upstream python-mpv requirements with the official GitHub
+# release archive for Python >= 3.9. This prevents pip from contacting the
+# PyPI python-mpv endpoint. Python 3.8 retains python-mpv 0.5.2.
 KS_REQ="$USER_HOME/KlipperScreen/scripts/KlipperScreen-requirements.txt"
 if [[ -f "$KS_REQ" ]]; then
     TMP_REQ="$(mktemp)"
@@ -138,6 +139,7 @@ if [[ -f "$KS_REQ" ]]; then
         /^python-mpv==/ {
             if (!replaced) {
                 print "python-mpv @ " url ";python_version>=\"3.9\""
+                print "python-mpv==0.5.2;python_version<\"3.9\""
                 replaced=1
             }
             next
@@ -209,7 +211,7 @@ Backup:
 Python package index:
   $PIP_INDEX_URL
 
-python-mpv source:
+python-mpv source (Python >= 3.9):
   $PYTHON_MPV_URL
 
 A reboot is required to activate the Device Tree overlay:
