@@ -128,13 +128,14 @@ else
 fi
 sudo chown -R "$USER_NAME:$USER_NAME" "$USER_HOME/KlipperScreen"
 
-# Remove python-mpv from the requirements file. KlipperScreen's installer
-# will install all remaining dependencies normally, then we install the
-# pinned upstream python-mpv release into the same virtual environment.
+# Remove every python-mpv requirement line, including modern PEP 508 lines
+# such as python-mpv==1.0.8;python_version>="3.10". A previous version of
+# this installer only matched "python-mpv==" and therefore missed the
+# conditional requirement used by current KlipperScreen.
 KS_REQ="$USER_HOME/KlipperScreen/scripts/KlipperScreen-requirements.txt"
 if [[ -f "$KS_REQ" ]]; then
     TMP_REQ="$(mktemp)"
-    grep -v '^python-mpv==' "$KS_REQ" > "$TMP_REQ"
+    grep -vE '^python-mpv([<=>!~]|;|$)' "$KS_REQ" > "$TMP_REQ"
     sudo cp "$TMP_REQ" "$KS_REQ"
     rm -f "$TMP_REQ"
     sudo chown "$USER_NAME:$USER_NAME" "$KS_REQ"
@@ -153,8 +154,6 @@ sudo -u "$USER_NAME" env PIP_INDEX_URL="$PIP_INDEX_URL" PIP_DEFAULT_TIMEOUT="$PI
     "$PYTHON_MPV_URL" || fail "Unable to install python-mpv 1.0.8 from GitHub. Check GitHub connectivity."
 
 log "Installing KlipperScreen service"
-# The KlipperScreen installer was run with START=0 above so we can install
-# python-mpv first. Now install/enable the service without reinstalling the venv.
 pushd "$USER_HOME/KlipperScreen" >/dev/null
 if [[ -f scripts/KlipperScreen.service ]]; then
     SERVICE_FILE="$(mktemp)"
